@@ -12,11 +12,15 @@ import time
 import pickle
 from PIL import Image
 import tensorflow.compat.v1 as tf
-from flask import Flask, Response, jsonify, session
+from flask import Flask, Response, jsonify, session, request, url_for
 import threading
 from flask_mysqldb import MySQL
 from flask_cors import CORS, cross_origin
 from datetime import datetime
+from preprocess import preprocesses
+import sys
+from classifier import training
+
 app = Flask(__name__)
 
 app.config['MYSQL_HOST'] = 'localhost'
@@ -27,9 +31,16 @@ app.config['CORS_HEADERS'] = 'Content-Type'
 
 mysql = MySQL(app)
 
-wewew = 202200000
+
 
 cors = CORS(app, resources={r"/get": {"origins": "http://localhost:port"}})
+
+
+class cperson():
+    def __init__(self):
+        self.id = 0
+
+person = cperson()
 
 lock = threading.Lock()
 os.environ['NO_PROXY'] = 'localhost'
@@ -70,9 +81,10 @@ def yawa():
     json_object = json.dumps(dictionary, indent = 4)
     return Response(json_object,  mimetype="application/json;")
 
-@app.route('/test')
-def test():
-    id = "202200000"
+@app.route('/gatelog')
+@cross_origin(origin='localhost',headers=['Content- Type','Authorization'])
+def gatelog():
+    id = person.id
     now = datetime.now()
     today = now.strftime("%Y-%m-%d")
     time_now = now.strftime("%H:%M:%S")
@@ -87,10 +99,11 @@ def test():
     else:
         mes = "ALREADY HAVE DATA"
 
+    dictionary = {"Data": "Status:200"}
+    json_object = json.dumps(dictionary, indent = 4)
+    return Response(json_object,  mimetype="application/json;")
 
-
-    return str(mes)
-
+    
 
 @app.route('/add/<userID>')
 def add(userID):
@@ -205,8 +218,9 @@ def generate():
                                             cv2.rectangle(frame, (xmin, ymin-20), (xmax, ymin-2), (0, 255,255), -1)
                                             cv2.putText(frame, result_names, (xmin,ymin-5), cv2.FONT_HERSHEY_COMPLEX_SMALL,
                                                         1, (0, 0, 0), thickness=1, lineType=1)
-                                            session['uid'] = result_names
-                                            
+                                            person.id = result_names
+                                            yield(message())
+
 
                                             
 
@@ -232,6 +246,61 @@ def generate():
                 yield(b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + bytearray(encodedImage) + b'\r\n')
             
             vc.release()
+
+
+@app.route('/data_process')
+@cross_origin(origin='localhost',headers=['Content- Type','Authorization'])
+def data_process():
+    input_datadir = './train_img'
+    output_datadir = './aligned_img'
+
+
+
+    obj=preprocesses(input_datadir,output_datadir)
+    nrof_images_total,nrof_successfully_aligned=obj.collect_data()
+
+    print('Total number of images: %d' % nrof_images_total)
+    print('Number of successfully aligned images: %d' % nrof_successfully_aligned)
+
+
+    dictionary = {"Data": "Training...."}
+    json_object = json.dumps(dictionary, indent = 4)
+    return Response(json_object,  mimetype="application/json;")
+
+@app.route('/train')
+@cross_origin(origin='localhost',headers=['Content- Type','Authorization'])
+def train():
+    datadir = './aligned_img'
+    modeldir = './model/20180402-114759.pb'
+    #modeldir = './model/20170511-185253.pb'
+    classifier_filename = './class/classifier.pkl'
+    print ("Training Start")
+    obj=training(datadir,modeldir,classifier_filename)
+    get_file=obj.main_train()
+    print('Saved classifier model to file "%s"' % get_file)
+    print("All done")
+
+    dictionary = {"Data": "SUCCESS: Data Trained!"}
+    json_object = json.dumps(dictionary, indent = 4)
+    return Response(json_object,  mimetype="application/json;")
+
+
+
+
+@app.route('/message')
+@cross_origin(origin='localhost',headers=['Content- Type','Authorization'])
+def message():
+    dictionary = {"Data": person.id}
+    json_object = json.dumps(dictionary, indent = 4)
+
+    return Response(json_object,  mimetype="application/json;")
+
+
+
+
+
+
+
 
 
 if __name__ == '__main__':
